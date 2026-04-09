@@ -23,6 +23,8 @@ import (
 	_ "image/gif"
 	_ "image/jpeg"
 	_ "image/png"
+	"regexp"
+	"slices"
 	"strings"
 	"time"
 
@@ -117,6 +119,40 @@ func (mc *MessageConverter) addMentions(ctx context.Context, mentionedJID []stri
 		mentionText := "@" + parsed.User
 		into.Body = strings.ReplaceAll(into.Body, mentionText, displayname)
 		into.FormattedBody = strings.ReplaceAll(into.FormattedBody, mentionText, fmt.Sprintf(`<a href="%s">%s</a>`, mxid.URI().MatrixToURL(), html.EscapeString(displayname)))
+	}
+}
+
+var plainMentionRegex = regexp.MustCompile(`@(\w+)`)
+
+func (mc *MessageConverter) addPlainTextMentions(ctx context.Context, into *event.MessageEventContent) {
+	if into.Body == "" {
+		return
+	}
+	into.EnsureHasHTML()
+	homeserver := mc.Bridge.Config.Homeserver.Domain
+	matches := plainMentionRegex.FindAllStringSubmatch(into.Body, -1)
+	for _, match := range matches {
+		localpart := match[1]
+		mxid := id.UserID(fmt.Sprintf("@%s:%s", localpart, homeserver))
+
+		// Skip if already mentioned (from native WhatsApp mentions)
+		if slices.Contains(into.Mentions.UserIDs, mxid) {
+			continue
+		}
+
+		// Check if the user exists as a ghost or Matrix user
+		ghost, err := mc.Bridge.GetGhostByMXID(ctx, mxid)
+		if err != nil || ghost == nil {
+			user, err := mc.Bridge.GetExistingUserByMXID(ctx, mxid)
+			if err != nil || user == nil {
+				continue
+			}
+		}
+
+		into.Mentions.UserIDs = append(into.Mentions.UserIDs, mxid)
+		mentionText := match[0]
+		pillHTML := fmt.Sprintf(`<a href="%s">%s</a>`, mxid.URI().MatrixToURL(), html.EscapeString(mentionText))
+		into.FormattedBody = strings.Replace(into.FormattedBody, html.EscapeString(mentionText), pillHTML, 1)
 	}
 }
 
@@ -249,6 +285,7 @@ func (mc *MessageConverter) ToMatrix(
 	if contextInfo.GetNonJIDMentions() == 1 {
 		part.Content.Mentions.Room = true
 	}
+	mc.addPlainTextMentions(ctx, part.Content)
 
 	cm := &bridgev2.ConvertedMessage{
 		Parts: []*bridgev2.ConvertedMessagePart{part},
