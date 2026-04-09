@@ -385,29 +385,31 @@ func (mc *MessageConverter) convertPill(displayname, mxid, eventID string, ctx f
 	if len(mxid) == 0 || mxid[0] != '@' {
 		return format.DefaultPillConverter(displayname, mxid, eventID, ctx)
 	}
+	localpart := id.UserID(mxid).Localpart()
+	boldMention := fmt.Sprintf("*@%s*", localpart)
 	allowedMentions, _ := ctx.ReturnData["allowed_mentions"].(*event.Mentions)
 	if allowedMentions != nil && !allowedMentions.Has(id.UserID(mxid)) {
-		return displayname
+		return boldMention
 	}
 	var jid types.JID
 	ghost, err := mc.Bridge.GetGhostByMXID(ctx.Ctx, id.UserID(mxid))
 	if err != nil {
 		zerolog.Ctx(ctx.Ctx).Err(err).Str("mxid", mxid).Msg("Failed to get ghost for mention")
-		return displayname
+		return boldMention
 	} else if ghost != nil {
 		jid = waid.ParseUserID(ghost.ID)
 	} else if user, err := mc.Bridge.GetExistingUserByMXID(ctx.Ctx, id.UserID(mxid)); err != nil {
 		zerolog.Ctx(ctx.Ctx).Err(err).Str("mxid", mxid).Msg("Failed to get user for mention")
-		return displayname
+		return boldMention
 	} else if user != nil {
 		portal := getPortal(ctx.Ctx)
 		login, _, _ := portal.FindPreferredLogin(ctx.Ctx, user, false)
 		if login == nil {
-			return displayname
+			return boldMention
 		}
 		jid = waid.ParseUserLoginID(login.ID, 0)
 	} else {
-		return displayname
+		return boldMention
 	}
 	mentions := ctx.ReturnData["output_mentions"].(*[]string)
 	*mentions = append(*mentions, jid.String())
