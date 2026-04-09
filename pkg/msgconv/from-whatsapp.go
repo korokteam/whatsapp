@@ -129,7 +129,7 @@ func (mc *MessageConverter) addPlainTextMentions(ctx context.Context, into *even
 		return
 	}
 	into.EnsureHasHTML()
-	homeserver := mc.Bridge.Config.Homeserver.Domain
+	homeserver := mc.Bridge.Matrix.ServerName()
 	matches := plainMentionRegex.FindAllStringSubmatch(into.Body, -1)
 	for _, match := range matches {
 		localpart := match[1]
