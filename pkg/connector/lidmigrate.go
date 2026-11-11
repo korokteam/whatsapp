@@ -193,7 +193,10 @@ func (wa *WhatsAppConnector) migrateToLIDDMs(ctx context.Context) error {
 		}
 		res, err := wa.reIDPhoneDMToLID(ctx, pnJID, lid, key.Receiver)
 		if err != nil {
-			return fmt.Errorf("failed to re-ID %s to %s: %w", pnJID, lid, err)
+			// Bessa: a portal row is re-ID'd before the membership events, so a dead
+			// room (deleted, or PN ghost already left) must not abort bridge startup.
+			log.Err(err).Stringer("pn", pnJID).Stringer("lid", lid).Msg("Failed to re-ID phone number DM portal, skipping")
+			continue
 		}
 		updatedPortals++
 		log.Info().
