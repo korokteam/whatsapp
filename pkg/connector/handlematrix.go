@@ -95,7 +95,20 @@ func (wa *WhatsAppClient) HandleMatrixPollVote(ctx context.Context, msg *bridgev
 	return wa.handleConvertedMatrixMessage(ctx, &msg.MatrixMessage, waMsg, nil)
 }
 
+// isRelayedSticker reports whether bridgev2 turned an m.sticker into an m.image
+// for relaying (it does so for networks without per-message profiles). The raw
+// content keeps the original shape, and m.sticker has no msgtype.
+func isRelayedSticker(msg *bridgev2.MatrixMessage) bool {
+	_, hasMsgType := msg.Event.Content.Raw["msgtype"]
+	return msg.OrigSender != nil && msg.Event.Content.Raw != nil && !hasMsgType && msg.Content.MsgType == event.MsgImage
+}
+
 func (wa *WhatsAppClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2.MatrixMessage) (result *bridgev2.MatrixMessageResponse, retErr error) {
+	// WhatsApp stickers can't carry the relay caption, but sending them as a
+	// relayed image turns them into a JPEG that loses the transparency.
+	if isRelayedSticker(msg) {
+		msg.Event.Type = event.EventSticker
+	}
 	waMsg, req, err := wa.Main.MsgConv.ToWhatsApp(ctx, wa.Client, msg.Event, msg.Content, msg.ReplyTo, msg.ThreadRoot, msg.Portal)
 	if err != nil {
 		return nil, fmt.Errorf("failed to convert message: %w", err)
